@@ -1,6 +1,7 @@
 # Sensitive
 node_modules
 .env
+.env.sample
 
 # Logs
 logs
