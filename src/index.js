@@ -4,6 +4,7 @@ import dns from "dns"
 dns.setServers(["8.8.8.8", "8.8.4.4"]);
 import connectDB from "./db/index.js";
 dotenv.config({path: "./env"})
+import { app } from "./app.js";
 
 connectDB()
 .then(()=>{
