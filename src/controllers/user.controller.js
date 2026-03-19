@@ -5,16 +5,6 @@ import { uploadOnCloudinary } from "../utils/cloudinary.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 
 const registerUser = asyncHandler(async (req, res) => {
-  // Get user details from frontend
-  // Valdation - not empty
-  // Check if user already exists: username, email
-  // Check for images, Check for avatars
-  // Upload them to cloudinary, avatar
-  // Create user object - create entry in db
-  // Remove password and refresh token field from response
-  // Check for user creation
-  // return res
-
   const { fullName, email, username, password } = req.body;
   console.log("email: ", email);
 
@@ -34,11 +24,6 @@ const registerUser = asyncHandler(async (req, res) => {
 
   const avatarLocalPath = req.files?.avatar[0]?.path;
   const coverImageLocalPath = req.files?.coverImage[0]?.path;
-
-  /*
-  const avatarLocalPath = req.files?.avatar?.[0]?.path;
-  const coverImageLocalPath = req.files?.coverImage?.[0]?.path;
-  */
 
   if (!avatarLocalPath) {
     throw new ApiError(400, "Avatar file is required");
@@ -70,13 +55,26 @@ const registerUser = asyncHandler(async (req, res) => {
 
   return res
     .status(201)
-    .json(new ApiResponse(200, createdUser, "User registered successfully"));
+    .json(new ApiResponse(201, createdUser, "User registered successfully"));
 });
 
 export { registerUser };
 
-/*
+/* 
+/////////////////////////Steps///////////////////////////
+ 1. Get user details from frontend
+ 2. Valdation - not empty
+ 3. Check if user already exists: username, email
+ 4. Check for images, Check for avatars
+ 5. Upload them to cloudinary, avatar
+ 6. Create user object - create entry in db
+ 7. Remove password and refresh token field from response
+ 8. Check for user creation
+ 9. return res
+ /////////////////////////////////////////////////////////
+*/
 
+/*
 1. Imports (ज़रूरी चीज़ें लाना)
 
 import { asyncHandler }...: यह एक 'wrapper' है जो try-catch लिखने की ज़रूरत को खत्म करता है। अगर कोड में कोई एरर आता है, तो यह उसे अपने आप पकड़ लेता है।
