@@ -4,6 +4,23 @@ import { User } from "../models/user.model.js";
 import { uploadOnCloudinary } from "../utils/cloudinary.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 
+const generateAccessAndRefreshTokens = async (userId) => {
+  try {
+    const user = await User.findById(userId);
+    const accessToken = user.generateAccessToken();
+    const refreshToken = user.generateRefreshToken();
+
+    user.refreshToken = refreshToken;
+    await user.save({ validateBeforeSave: false });
+    return { accessToken, refreshToken };
+  } catch (error) {
+    throw new ApiError(
+      500,
+      "Something went wrong while generating refresh and access token"
+    );
+  }
+};
+
 const registerUser = asyncHandler(async (req, res) => {
   const { fullName, email, username, password } = req.body;
   console.log("email: ", email);
@@ -26,10 +43,13 @@ const registerUser = asyncHandler(async (req, res) => {
   // const coverImageLocalPath = req.files?.coverImage[0]?.path;
 
   let coverImageLocalPath;
-  if (req.files && Array.isArray(req.files.coverImage) && req.files.coverImage.length > 0) {
-    coverImageLocalPath = req.files.coverImage[0].path
+  if (
+    req.files &&
+    Array.isArray(req.files.coverImage) &&
+    req.files.coverImage.length > 0
+  ) {
+    coverImageLocalPath = req.files.coverImage[0].path;
   } else {
-    
   }
 
   if (!avatarLocalPath) {
@@ -65,68 +85,83 @@ const registerUser = asyncHandler(async (req, res) => {
     .json(new ApiResponse(201, createdUser, "User registered successfully"));
 });
 
-export { registerUser };
+const loginUser = asyncHandler(async (req, res) => {
+  // req body -> data
+  // username or email
+  // find the user
+  // password check
+  // access and refresh token
+  // send cookies
+  const { email, username, password } = req.body;
+  if (!username || !email) {
+    throw new ApiError(400, "username or email required");
+  }
 
-/* 
-/////////////////////////Steps///////////////////////////
- 1. Get user details from frontend
- 2. Valdation - not empty
- 3. Check if user already exists: username, email
- 4. Check for images, Check for avatars
- 5. Upload them to cloudinary, avatar
- 6. Create user object - create entry in db
- 7. Remove password and refresh token field from response
- 8. Check for user creation
- 9. return res
- /////////////////////////////////////////////////////////
-*/
+  const user = await User.findOne({
+    $or: [{ username }, { email }],
+  });
 
-/*
-1. Imports (ज़रूरी चीज़ें लाना)
+  if (!user) {
+    throw new ApiError(404, "User does not exist");
+  }
 
-import { asyncHandler }...: यह एक 'wrapper' है जो try-catch लिखने की ज़रूरत को खत्म करता है। अगर कोड में कोई एरर आता है, तो यह उसे अपने आप पकड़ लेता है।
+  const isPasswordValid = await user.isPasswordCorrect(password);
 
-import { ApiError }...: एरर मैसेज को एक खास और प्रोफेशनल तरीके से भेजने के लिए बनाया गया टूल।
+  if (!isPasswordValid) {
+    throw new ApiError(401, "Invalid user credentials");
+  }
 
-import { User }...: MongoDB का मॉडल, जिससे हम डेटाबेस में डेटा सेव या चेक करेंगे।
+  const { accessToken, refreshToken } = await generateAccessAndRefreshTokens(
+    user._id
+  );
 
-import { uploadOnCloudinary }...: यह एक फंक्शन है जो इमेज को इंटरनेट (Cloudinary) पर अपलोड करने में मदद करता है।
+  const loggedInUser = await User.findById(user._id).select(
+    "-password -refreshToken"
+  );
 
-import { ApiResponse }...: सफलता (Success) का रिस्पॉन्स भेजने के लिए एक स्टैंडर्ड फॉर्मेट।
+  const options = {
+    httpOnly: true,
+    secure: true,
+  };
 
-2. Logic (काम कैसे हो रहा है)
+  return res
+    .status(200)
+    .cookie("accessToken", accessToken, options)
+    .cookie("refreshToken", refreshToken, options)
+    .json(
+      new ApiResponse(
+        200,
+        {
+          user: loggedInUser,
+          accessToken,
+          refreshToken,
+        },
+        "User logged in successfully"
+      )
+    );
+});
 
-const registerUser = asyncHandler(async (req, res) => { ... })
-यहाँ हम registerUser नाम का फंक्शन बना रहे हैं जो async है (क्योंकि डेटाबेस और फाइल अपलोड में समय लगता है)।
+const logoutUser = asyncHandler(async (req, res) => {
+  await User.findByIdAndUpdate(
+    req.user._id,
+    {
+      $set: {
+        refreshToken: undefined,
+      },
+    },
+    {
+      new: true,
+    }
+  );
+  const options = {
+    httpOnly: true,
+    secure: true,
+  };
+  return res
+  .status(200)
+  .clearCookie("accessToken", options)
+  .clearCookie("refreshToken", options)
+  .json(new ApiResponse(200, {}, "User logged out"))
+});
 
-const { fullName, email, username, password } = req.body;
-फ्रंटएंड (फॉर्म) से जो डेटा आया है, उसे अलग-अलग वेरिएबल्स में निकाला जा रहा है।
-
-if ([fullName, email, username, password].some((field) => field?.trim() === "")) { ... }
-चेकिंग: यह चेक कर रहा है कि कोई भी फील्ड खाली तो नहीं है। .trim() फालतू के स्पेस हटा देता है। अगर कोई खाली है, तो यह 400 Error (Bad Request) फेंक देगा।
-
-const existedUser = User.findOne({ $or: [{ username }, { email }] });
-चेक: डेटाबेस में ढूँढो कि क्या इस username या email वाला कोई यूजर पहले से मौजूद है?
-if (existedUser) { throw new ApiError(409, "...") }
-अगर यूजर मिल गया, तो 409 Error (Conflict) भेज दो कि भाई, यह ईमेल/यूजरनेम पहले से इस्तेमाल में है।
-
-const avatarLocalPath = req.files?.avatar[0]?.path;
-यूजर की प्रोफाइल फोटो (Avatar) का जो रास्ता (path) आपके सर्वर पर है, उसे निकालो।
-
-const avatar = await uploadOnCloudinary(avatarLocalPath);
-उस फोटो को सर्वर से उठाकर Cloudinary (बादलों वाली स्टोरेज) पर अपलोड कर दो।
-
-const user = await User.create({ ... });
-अब डेटाबेस में नया यूजर बनाओ। पासवर्ड, ईमेल और इमेज का लिंक (URL) इसमें सेव कर दो।
-
-const createdUser = await User.findById(user._id).select("-password -refreshToken");
-यूजर बनने के बाद, उसे फिर से डेटाबेस से निकालो, लेकिन इस बार password और refreshToken को छोड़ देना (सुरक्षा के लिए)।
-
-return res.status(201).json(new ApiResponse(200, createdUser, "..."));
-सब कुछ सही होने पर, यूजर को 201 (Created) स्टेटस के साथ सफलता का मैसेज और उसका डेटा वापस भेज दो।
-
-3. Export
-export { registerUser };
-ताकि इस फंक्शन को आप अपनी routes वाली फाइल में इस्तेमाल कर सकें।
-
-*/
+export { registerUser, loginUser, logoutUser };
